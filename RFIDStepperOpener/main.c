@@ -1,20 +1,42 @@
 /*
  * Author: Mark Blanco
- * Date: March 11 2016
- * Description: This program interfaces a raspberry pi to an 
- * HID ProxPro II RFID Card Reader over the Weigand Interface.
+ * Date: 26 March 2016
+ * Description: This program combines the capabilities of the 
+ * spinstepper example and RFID weigand reader example to create
+ * an access control system for the EHC lab.
  * 
  */
 #include <wiringPi.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <stdbool.h>
 
 #define ZERO_PIN 8
 #define ONE_PIN 7
 #define MAX_BITS 100
 #define WEIGAND_WAIT_TIME 100000
 
+// Define pins to interface to DRV8825
+// driver board. Note that these numbers
+// are the GPIO numbers, not the physical
+// pin numbers. The comments on each line
+// indicate the physical pin number on a 
+// Raspberry Pi Model A
+#define ENABLE_N_PIN 4		// PhysPin 7
+#define FAULT_N_PIN 17		// PhysPin 11 
+#define MODE_PIN 21				// PhysPin 13
+#define MODE1_PIN 22			// PhysPin 15
+#define MODE2_PIN 23			// PhysPin 16
+#define DIRECTION_PIN 24	// PhysPin 18
+#define STEP_PIN 18				// PhysPin 12 --> Note: Hardware PWM capable
+#define DOOR_OPEN_N_PIN 25// PhysPin 22
+#define OPEN_TIME 3				// Number of seconds to keep the door unlocked
+#define STEPS_TO_TAKE 250	// Number of steps to make to unlock the door
+
+int Reg_card_bits = 35;
+int Reg_FC = 0;
+int Reg_CC = 0;
 unsigned char databits[MAX_BITS];
 volatile unsigned int bitCount = 0;
 unsigned char flagDone;
@@ -33,6 +55,12 @@ volatile unsigned long cardChunk2 = 0;
 void printBits();
 void getCardNumAndSiteCode();
 void getCardValues();
+void stepStepper(int steps, int direction, int delay);
+bool registeredCardID();
+void openDoor();
+bool doorIsOpen(){
+	return !digitalRead(DOOR_OPEN_N_PIN);
+}
 
 int bitRead(volatile unsigned long val, int index){
 	int mask = 1;
@@ -82,13 +110,38 @@ void handle1_ISR(){
 
 int main(){
 	wiringPiSetupGpio();
-	printf("Now running Weigand Interface Program for ProxPro II HID RFID Card Reader\n");
+	printf("Now running Embedded Hardware Club lab door access controller.\n");
 	wiringPiISR(ZERO_PIN, INT_EDGE_FALLING, handle0_ISR );
 	wiringPiISR(ONE_PIN, INT_EDGE_FALLING, handle1_ISR );
 	
+	// Setup the IO Pins as needed:
+	pinMode(ENABLE_N_PIN, OUTPUT);
+	pinMode(FAULT_N_PIN, INPUT);
+	pullUpDnControl(FAULT_N_PIN, PUD_UP);
+	pinMode(MODE_PIN, OUTPUT);	
+	pinMode(MODE1_PIN, OUTPUT);	
+	pinMode(MODE2_PIN, OUTPUT);
+	pinMode(DIRECTION_PIN, OUTPUT);
+	pinMode(STEP_PIN, OUTPUT);
+	pinMode(DOOR_OPEN_N_PIN, INPUT);
+	pullUpDnControl(DOOR_OPEN_N_PIN, PUD_DOWN); 	
+	// Set the IO pins to their default startup values:
+	digitalWrite(ENABLE_N_PIN, HIGH); // Disable the DRV8825
+	digitalWrite(MODE_PIN, LOW);
+	digitalWrite(MODE1_PIN, LOW);
+	digitalWrite(MODE2_PIN, LOW);
+	digitalWrite(DIRECTION_PIN, LOW);
+	digitalWrite(STEP_PIN, LOW);
 	weigand_counter = WEIGAND_WAIT_TIME;
 	
+	printf("Enter the test facility code and card code:\n");
+	scanf("%d %d", &Reg_FC, &Reg_CC);
+	
 	while(1){
+		if(!digitalRead(FAULT_N_PIN)){
+			printf("DRV8825 is reporting a problem!\n");
+			while (!digitalRead(FAULT_N_PIN)) digitalWrite(ENABLE_N_PIN, HIGH);
+		}
 		if (!flagDone) {
 			if (--weigand_counter == 0)
 				flagDone = 1;
@@ -103,7 +156,10 @@ int main(){
 			getCardValues();
 			getCardNumAndSiteCode();
 			printBits();
-			
+			if (registeredCardID() && !doorIsOpen() && digitalRead(FAULT_N_PIN)){				
+				openDoor();
+			}
+	
 			// cleanup and get ready for the next card
 			bitCount = 0; facilityCode = 0; cardCode = 0;
 			bitHolder1 = 0; bitHolder2 = 0;
@@ -117,6 +173,30 @@ int main(){
 
 
 	return EXIT_SUCCESS;
+}
+
+bool registeredCardID(){// For now check against the ID given at runtime
+	return facilityCode == Reg_FC && cardCode == Reg_CC && bitCount == Reg_card_bits;
+}
+
+
+void openDoor(){
+	digitalWrite(ENABLE_N_PIN, LOW);
+	stepStepper(STEPS_TO_TAKE, 1, 7000);
+	sleep(OPEN_TIME);
+	digitalWrite(ENABLE_N_PIN, HIGH);	
+}
+
+void stepStepper(int steps, int direction, int delay){
+	int i = 0;
+	printf("Running %d steps in direction %d with delay %d\n", steps, direction, delay);
+	digitalWrite(DIRECTION_PIN, direction);
+	for (i = 0; i < steps; i ++){
+		digitalWrite(STEP_PIN, HIGH);
+		usleep(delay);
+		digitalWrite(STEP_PIN, LOW);
+		usleep(delay);
+	}
 }
 
 void printBits(){
