@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <unistd.h>
+#include <sched.h>
 
 // Define pins to interface to DRV8825
 // driver board. Note that these numbers
@@ -24,7 +25,26 @@
 #define DIRECTION_PIN 24	// PhysPin 18
 #define STEP_PIN 18				// PhysPin 12 --> Note: Hardware PWM capable
 
+
+void stepStepper(int steps, int direction, int delay){
+	int i = 0;
+	printf("Running %d steps in direction %d with delay %d\n", steps, direction, delay);
+	digitalWrite(DIRECTION_PIN, direction);
+	digitalWrite(ENABLE_N_PIN, LOW);
+	for (i = 0; i < steps; i ++){
+		digitalWrite(STEP_PIN, HIGH);
+		usleep(delay);
+		digitalWrite(STEP_PIN, LOW);
+		usleep(delay);
+	}
+	digitalWrite(ENABLE_N_PIN, HIGH);
+}
+
+
 int main(){
+	int steps = 0;
+	int direction = 0;
+	int delay = 15000;
 	wiringPiSetupGpio();
 	printf("Now running DRV8825 Stepper Motor Interface Program\n");
 	// Setup the IO Pins as needed:
@@ -32,10 +52,10 @@ int main(){
 	pinMode(FAULT_N_PIN, INPUT);
 	pullUpDnControl(FAULT_N_PIN, PUD_UP);
 	pinMode(MODE_PIN, OUTPUT);	
-	pinMode(MODE_PIN1, OUTPUT);	
-	pinMode(MODE_PIN2, OUTPUT);
+	pinMode(MODE1_PIN, OUTPUT);	
+	pinMode(MODE2_PIN, OUTPUT);
 	pinMode(DIRECTION_PIN, OUTPUT);
-	pinMode(STEP_PIN, PWM_OUTPUT);	
+	pinMode(STEP_PIN, OUTPUT);	
 	// Set the IO pins to their default startup values:
 	digitalWrite(ENABLE_N_PIN, HIGH); // Disable the DRV8825
 	digitalWrite(MODE_PIN, LOW);
@@ -44,9 +64,13 @@ int main(){
 	digitalWrite(DIRECTION_PIN, LOW);
 	digitalWrite(STEP_PIN, LOW);
 	while(1){
-		// Main Loop Will Go Here:
-
-
+		if(!digitalRead(FAULT_N_PIN)){
+			printf("DRV8825 is reporting a problem!\n");
+			while (!digitalRead(FAULT_N_PIN)) digitalWrite(ENABLE_N_PIN, HIGH);
+		}
+		printf("Enter three space separated numbers to indicate steps, direction, and delay in microseconds between commutations.\n");
+		scanf("%d %d %d", &steps, &direction, &delay);
+		stepStepper(steps, direction, delay);		
 	}	
 	return EXIT_FAILURE;	// Returning EXIT_FAILURE rather
 												// than EXIT_SUCCESS since the program
