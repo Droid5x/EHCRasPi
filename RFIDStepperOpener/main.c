@@ -33,9 +33,10 @@
 #define STEP_PIN 18				// PhysPin 12 --> Note: Hardware PWM capable
 #define DOOR_OPEN_N_PIN 25// PhysPin 22
 #define OPEN_TIME 3				// Number of seconds to keep the door unlocked
-#define STEPS_TO_TAKE 215	// Number of steps to make to unlock the door
+#define STEPS_TO_TAKE 220	// Number of steps to make to unlock the door
 
-int bits_spec;		// Number of bits in the card
+int *bits_spec;		// Array containing number of bits in the card (allows multiple to be checked)
+int num_bit_specs = 0;
 unsigned char databits[MAX_BITS];
 volatile unsigned int bitCount = 0;
 unsigned char flagDone;
@@ -58,7 +59,7 @@ void stepStepper(int steps, int direction, int delay);
 bool registeredCardID(char** members, int num_members);
 void openDoor();
 void usage(char** argv){
-	printf("USAGE: %s access_list length_of_card_in_bits\n", argv[0]);
+	printf("USAGE: %s access_list number_of_card_lengths length1_of_card_in_bits [length2_of_card_in_bits ... ]\n", argv[0]);
 }
 bool doorIsOpen(){
 	return !digitalRead(DOOR_OPEN_N_PIN);
@@ -116,11 +117,16 @@ int main(int argc, char** argv){
 	int num_members = 10;
 	int count=0, i = 0;	
 	char line[257];
-	if (argc < 3){
+	if (argc < 4 || (int)argv[2] > argc - 3 || (int)argv[2] < 1){
 		usage(argv);
 		return EXIT_FAILURE;
 	}
-	bits_spec = (int)argv[2];
+	bits_spec = calloc((int)argv[2], sizeof(int));
+	for (i = 0; i < (int)argv[2]; i++){
+		bits_spec[i] = (int)argv[i+3];
+	} 
+	i = 0;
+	num_bit_specs = (int)argv[2];
 	access_list = fopen(argv[1], "r");
 	if (access_list == NULL){
 		fprintf(stderr, "ERROR: Access list %s could not be opened!\n", argv[1]);
