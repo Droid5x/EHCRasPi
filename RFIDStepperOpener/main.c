@@ -117,7 +117,7 @@ int main(int argc, char** argv){
 	int num_members = 10;
 	int count=0, i = 0;	
 	char line[257];
-	if (argc < 4 || (int)argv[2] > argc - 3 || (int)argv[2] < 1){
+	if (argc < 4 || (int)argv[2] > argc - 3){
 		usage(argv);
 		return EXIT_FAILURE;
 	}
